@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
 
-const PIN_CODE = '2026'
+const SECURITY_PIN = '2026'
+const ADMIN_PIN = '0935'
 
 function PinGate({ onUnlock }) {
   const [pin, setPin] = useState('')
@@ -14,8 +15,10 @@ function PinGate({ onUnlock }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (pin === PIN_CODE) {
-      onUnlock()
+    if (pin === SECURITY_PIN) {
+      onUnlock('security')
+    } else if (pin === ADMIN_PIN) {
+      onUnlock('admin')
     } else {
       setError(true)
       setPin('')
@@ -150,10 +153,11 @@ function GuestCard({ guest, onCheckIn, onUndo, isBlacklisted }) {
   )
 }
 
-function TabBar({ tab, onChange }) {
+function TabBar({ tab, onChange, isAdmin }) {
   const tabs = [
     { value: 'guests', label: 'Guest List' },
     { value: 'blacklist', label: 'Blacklist' },
+    ...(isAdmin ? [{ value: 'admin', label: 'Add Guest' }] : []),
   ]
 
   return (
@@ -166,7 +170,9 @@ function TabBar({ tab, onChange }) {
             tab === t.value
               ? t.value === 'blacklist'
                 ? 'bg-red-900/60 text-red-300'
-                : 'bg-surface-600 text-white'
+                : t.value === 'admin'
+                  ? 'bg-blue-900/60 text-blue-300'
+                  : 'bg-surface-600 text-white'
               : 'text-gray-500 hover:text-gray-300'
           }`}
         >
@@ -288,8 +294,122 @@ function BlacklistPanel({ blacklist, onAdd, onRemove }) {
   )
 }
 
+function AdminPanel({ onAdded }) {
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [invitedBy, setInvitedBy] = useState('')
+  const [contact, setContact] = useState('')
+  const [notes, setNotes] = useState('')
+  const [status, setStatus] = useState(null)
+  const [recentAdds, setRecentAdds] = useState([])
+
+  const handleAdd = async (e) => {
+    e.preventDefault()
+    if (!firstName.trim()) return
+
+    const { error } = await supabase.from('checkins').insert({
+      first_name: firstName.trim(),
+      last_name: lastName.trim() || null,
+      invited_by: invitedBy.trim() || null,
+      contact_details: contact.trim() || null,
+      notes: notes.trim() || null,
+      attending: true,
+      checked_in: false,
+    })
+
+    if (error) {
+      setStatus('error')
+    } else {
+      setRecentAdds((prev) => [`${firstName.trim()} ${lastName.trim()}`.trim(), ...prev])
+      setStatus('success')
+      setFirstName('')
+      setLastName('')
+      setInvitedBy('')
+      setContact('')
+      setNotes('')
+      if (onAdded) onAdded()
+    }
+    setTimeout(() => setStatus(null), 2000)
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 mt-4 space-y-4">
+      <form onSubmit={handleAdd} className="rounded-xl border border-blue-800/40 bg-blue-950/20 p-5 space-y-3">
+        <p className="text-sm font-semibold text-blue-400">Add Guest to List</p>
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="First name *"
+            className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
+          />
+          <input
+            type="text"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Last name"
+            className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
+          />
+        </div>
+        <input
+          type="text"
+          value={invitedBy}
+          onChange={(e) => setInvitedBy(e.target.value)}
+          placeholder="Invited by"
+          className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
+        />
+        <input
+          type="text"
+          value={contact}
+          onChange={(e) => setContact(e.target.value)}
+          placeholder="Contact details (phone, email, IG)"
+          className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
+        />
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Notes (optional)"
+          className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
+        />
+        <button
+          type="submit"
+          disabled={!firstName.trim()}
+          className="w-full py-3 rounded-lg text-base font-semibold bg-blue-600 hover:bg-blue-500 disabled:bg-surface-700 disabled:text-gray-600 text-white transition-colors active:scale-[0.98]"
+        >
+          Add to Guest List
+        </button>
+        {status === 'success' && (
+          <p className="text-center text-sm font-medium text-green-400">Guest added successfully!</p>
+        )}
+        {status === 'error' && (
+          <p className="text-center text-sm font-medium text-red-400">Failed to add. Try again.</p>
+        )}
+      </form>
+
+      {recentAdds.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-600 mb-2">Recently Added This Session</p>
+          <div className="space-y-2">
+            {recentAdds.map((name, i) => (
+              <div key={i} className="rounded-lg border border-blue-800/30 bg-blue-950/10 px-4 py-2.5 flex items-center gap-2">
+                <svg className="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                <span className="text-sm text-white">{name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [unlocked, setUnlocked] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [tab, setTab] = useState('guests')
   const [guests, setGuests] = useState([])
   const [blacklist, setBlacklist] = useState([])
@@ -380,7 +500,7 @@ export default function App() {
   }
 
   if (!unlocked) {
-    return <PinGate onUnlock={() => setUnlocked(true)} />
+    return <PinGate onUnlock={(role) => { setUnlocked(true); setIsAdmin(role === 'admin') }} />
   }
 
   // Build blacklist name set for quick lookup
@@ -475,7 +595,7 @@ export default function App() {
           </div>
 
           {/* Tab bar */}
-          <TabBar tab={tab} onChange={setTab} />
+          <TabBar tab={tab} onChange={setTab} isAdmin={isAdmin} />
 
           {/* Search & filter (guests tab only) */}
           {tab === 'guests' && (
@@ -546,13 +666,15 @@ export default function App() {
             </div>
           )}
         </div>
-      ) : (
+      ) : tab === 'blacklist' ? (
         <BlacklistPanel
           blacklist={blacklist}
           onAdd={handleAddBlacklist}
           onRemove={handleRemoveBlacklist}
         />
-      )}
+      ) : tab === 'admin' && isAdmin ? (
+        <AdminPanel onAdded={fetchGuests} />
+      ) : null}
     </div>
   )
 }

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
 
 const PIN_CODE = '2026'
-const TABLE = 'checkins'
 
 function PinGate({ onUnlock }) {
   const [pin, setPin] = useState('')
@@ -64,7 +63,7 @@ function PinGate({ onUnlock }) {
   )
 }
 
-function GuestCard({ guest, onCheckIn, onUndo }) {
+function GuestCard({ guest, onCheckIn, onUndo, isBlacklisted }) {
   const isCheckedIn = guest.checked_in
   const checkedInTime = guest.checked_in_at
     ? new Date(guest.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -72,17 +71,27 @@ function GuestCard({ guest, onCheckIn, onUndo }) {
 
   return (
     <div className={`rounded-xl border p-4 sm:p-5 transition-all ${
-      isCheckedIn
-        ? 'bg-surface-900/50 border-surface-700/50'
-        : 'bg-surface-800 border-surface-600'
+      isBlacklisted
+        ? 'bg-red-950/30 border-red-800/50'
+        : isCheckedIn
+          ? 'bg-surface-900/50 border-surface-700/50'
+          : 'bg-surface-800 border-surface-600'
     }`}>
+      {isBlacklisted && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-red-900/40 border border-red-800/40">
+          <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          </svg>
+          <span className="text-sm font-semibold text-red-400">BLACKLISTED — DO NOT ADMIT</span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className={`text-lg font-semibold truncate ${isCheckedIn ? 'text-gray-400' : 'text-white'}`}>
+            <h3 className={`text-lg font-semibold truncate ${isBlacklisted ? 'text-red-300' : isCheckedIn ? 'text-gray-400' : 'text-white'}`}>
               {guest.first_name} {guest.last_name}
             </h3>
-            {isCheckedIn && (
+            {isCheckedIn && !isBlacklisted && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/40 text-green-400 border border-green-800/40 whitespace-nowrap">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -117,24 +126,53 @@ function GuestCard({ guest, onCheckIn, onUndo }) {
           )}
         </div>
 
-        <div className="flex-shrink-0">
-          {isCheckedIn ? (
-            <button
-              onClick={() => onUndo(guest.id)}
-              className="px-4 py-2.5 rounded-lg text-sm font-medium bg-surface-700 hover:bg-surface-600 text-gray-400 hover:text-gray-200 border border-surface-600 transition-colors active:scale-[0.97]"
-            >
-              Undo
-            </button>
-          ) : (
-            <button
-              onClick={() => onCheckIn(guest.id)}
-              className="px-5 py-3 rounded-lg text-base font-semibold bg-accent-green hover:bg-accent-green-hover text-white shadow-lg shadow-green-900/20 transition-colors active:scale-[0.97]"
-            >
-              Check In
-            </button>
-          )}
-        </div>
+        {!isBlacklisted && (
+          <div className="flex-shrink-0">
+            {isCheckedIn ? (
+              <button
+                onClick={() => onUndo(guest.id)}
+                className="px-4 py-2.5 rounded-lg text-sm font-medium bg-surface-700 hover:bg-surface-600 text-gray-400 hover:text-gray-200 border border-surface-600 transition-colors active:scale-[0.97]"
+              >
+                Undo
+              </button>
+            ) : (
+              <button
+                onClick={() => onCheckIn(guest.id)}
+                className="px-5 py-3 rounded-lg text-base font-semibold bg-accent-green hover:bg-accent-green-hover text-white shadow-lg shadow-green-900/20 transition-colors active:scale-[0.97]"
+              >
+                Check In
+              </button>
+            )}
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function TabBar({ tab, onChange }) {
+  const tabs = [
+    { value: 'guests', label: 'Guest List' },
+    { value: 'blacklist', label: 'Blacklist' },
+  ]
+
+  return (
+    <div className="flex bg-surface-800 rounded-lg border border-surface-600 p-0.5">
+      {tabs.map((t) => (
+        <button
+          key={t.value}
+          onClick={() => onChange(t.value)}
+          className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
+            tab === t.value
+              ? t.value === 'blacklist'
+                ? 'bg-red-900/60 text-red-300'
+                : 'bg-surface-600 text-white'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -165,98 +203,199 @@ function FilterToggle({ filter, onChange }) {
   )
 }
 
+function BlacklistPanel({ blacklist, onAdd, onRemove }) {
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [reason, setReason] = useState('')
+
+  const handleAdd = (e) => {
+    e.preventDefault()
+    if (!firstName.trim()) return
+    onAdd(firstName.trim(), lastName.trim(), reason.trim())
+    setFirstName('')
+    setLastName('')
+    setReason('')
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 mt-4 space-y-4">
+      {/* Add form */}
+      <form onSubmit={handleAdd} className="rounded-xl border border-red-800/40 bg-red-950/20 p-4 space-y-3">
+        <p className="text-sm font-semibold text-red-400">Add to Blacklist</p>
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="First name *"
+            className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-red-500 transition-colors"
+          />
+          <input
+            type="text"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Last name"
+            className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-red-500 transition-colors"
+          />
+        </div>
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason (optional)"
+          className="w-full px-4 py-3 rounded-lg bg-surface-800 border border-surface-600 text-white placeholder-gray-600 outline-none focus:border-red-500 transition-colors"
+        />
+        <button
+          type="submit"
+          disabled={!firstName.trim()}
+          className="w-full py-3 rounded-lg text-base font-semibold bg-red-600 hover:bg-red-500 disabled:bg-surface-700 disabled:text-gray-600 text-white transition-colors active:scale-[0.98]"
+        >
+          Add to Blacklist
+        </button>
+      </form>
+
+      {/* Blacklist entries */}
+      {blacklist.length === 0 ? (
+        <div className="text-center py-16">
+          <p className="text-gray-600">No blacklisted individuals</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {blacklist.map((entry) => (
+            <div key={entry.id} className="rounded-xl border border-red-800/40 bg-red-950/20 p-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-red-300">
+                  {entry.first_name} {entry.last_name}
+                </h3>
+                {entry.reason && (
+                  <p className="text-sm text-red-400/70 mt-1">{entry.reason}</p>
+                )}
+                <p className="text-xs text-gray-600 mt-1">
+                  Added {new Date(entry.added_at).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                onClick={() => onRemove(entry.id)}
+                className="px-4 py-2.5 rounded-lg text-sm font-medium bg-surface-700 hover:bg-surface-600 text-gray-400 hover:text-gray-200 border border-surface-600 transition-colors active:scale-[0.97]"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [unlocked, setUnlocked] = useState(false)
+  const [tab, setTab] = useState('guests')
   const [guests, setGuests] = useState([])
+  const [blacklist, setBlacklist] = useState([])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const searchRef = useRef(null)
 
-  // Fetch all guests on mount
   const fetchGuests = useCallback(async () => {
     const { data, error } = await supabase
-      .from(TABLE)
+      .from('checkins')
       .select('*')
       .order('last_name', { ascending: true })
 
-    if (!error && data) {
-      setGuests(data)
-    }
+    if (!error && data) setGuests(data)
     setLoading(false)
+  }, [])
+
+  const fetchBlacklist = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('blacklist')
+      .select('*')
+      .order('added_at', { ascending: false })
+
+    if (!error && data) setBlacklist(data)
   }, [])
 
   useEffect(() => {
     if (!unlocked) return
     fetchGuests()
+    fetchBlacklist()
 
-    // Real-time subscription
-    const channel = supabase
-      .channel('guests-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: TABLE },
-        (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            setGuests((prev) =>
-              prev.map((g) => (g.id === payload.new.id ? payload.new : g))
-            )
-          } else if (payload.eventType === 'INSERT') {
-            setGuests((prev) => [...prev, payload.new])
-          } else if (payload.eventType === 'DELETE') {
-            setGuests((prev) => prev.filter((g) => g.id !== payload.old.id))
-          }
+    const guestChannel = supabase
+      .channel('checkins-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, (payload) => {
+        if (payload.eventType === 'UPDATE') {
+          setGuests((prev) => prev.map((g) => (g.id === payload.new.id ? payload.new : g)))
+        } else if (payload.eventType === 'INSERT') {
+          setGuests((prev) => [...prev, payload.new])
+        } else if (payload.eventType === 'DELETE') {
+          setGuests((prev) => prev.filter((g) => g.id !== payload.old.id))
         }
-      )
+      })
+      .subscribe()
+
+    const blacklistChannel = supabase
+      .channel('blacklist-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blacklist' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setBlacklist((prev) => [payload.new, ...prev])
+        } else if (payload.eventType === 'DELETE') {
+          setBlacklist((prev) => prev.filter((b) => b.id !== payload.old.id))
+        }
+      })
       .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(guestChannel)
+      supabase.removeChannel(blacklistChannel)
     }
-  }, [unlocked, fetchGuests])
+  }, [unlocked, fetchGuests, fetchBlacklist])
 
-  // Auto-focus search when unlocked
   useEffect(() => {
-    if (unlocked && !loading) {
+    if (unlocked && !loading && tab === 'guests') {
       setTimeout(() => searchRef.current?.focus(), 100)
     }
-  }, [unlocked, loading])
+  }, [unlocked, loading, tab])
 
   const handleCheckIn = async (id) => {
     const now = new Date().toISOString()
-    // Optimistic update
-    setGuests((prev) =>
-      prev.map((g) =>
-        g.id === id ? { ...g, checked_in: true, checked_in_at: now } : g
-      )
-    )
-    await supabase
-      .from(TABLE)
-      .update({ checked_in: true, checked_in_at: now })
-      .eq('id', id)
+    setGuests((prev) => prev.map((g) => g.id === id ? { ...g, checked_in: true, checked_in_at: now } : g))
+    await supabase.from('checkins').update({ checked_in: true, checked_in_at: now }).eq('id', id)
   }
 
   const handleUndo = async (id) => {
-    // Optimistic update
-    setGuests((prev) =>
-      prev.map((g) =>
-        g.id === id ? { ...g, checked_in: false, checked_in_at: null } : g
-      )
-    )
-    await supabase
-      .from(TABLE)
-      .update({ checked_in: false, checked_in_at: null })
-      .eq('id', id)
+    setGuests((prev) => prev.map((g) => g.id === id ? { ...g, checked_in: false, checked_in_at: null } : g))
+    await supabase.from('checkins').update({ checked_in: false, checked_in_at: null }).eq('id', id)
+  }
+
+  const handleAddBlacklist = async (firstName, lastName, reason) => {
+    await supabase.from('blacklist').insert({ first_name: firstName, last_name: lastName || null, reason: reason || null })
+    fetchBlacklist()
+  }
+
+  const handleRemoveBlacklist = async (id) => {
+    await supabase.from('blacklist').delete().eq('id', id)
+    fetchBlacklist()
   }
 
   if (!unlocked) {
     return <PinGate onUnlock={() => setUnlocked(true)} />
   }
 
+  // Build blacklist name set for quick lookup
+  const blacklistNames = new Set(
+    blacklist.map((b) => `${(b.first_name || '').toLowerCase()} ${(b.last_name || '').toLowerCase()}`.trim())
+  )
+
+  const isGuestBlacklisted = (g) => {
+    const fullName = `${(g.first_name || '').toLowerCase()} ${(g.last_name || '').toLowerCase()}`.trim()
+    return blacklistNames.has(fullName)
+  }
+
   const searchLower = search.toLowerCase().trim()
   const filtered = guests
     .filter((g) => {
-      // Search filter
       if (searchLower) {
         const match =
           (g.first_name || '').toLowerCase().includes(searchLower) ||
@@ -265,13 +404,16 @@ export default function App() {
           (g.invited_by || '').toLowerCase().includes(searchLower)
         if (!match) return false
       }
-      // Status filter
       if (filter === 'pending') return !g.checked_in
       if (filter === 'checked') return g.checked_in
       return true
     })
     .sort((a, b) => {
-      // Unchecked first, then checked
+      // Blacklisted first, then unchecked, then checked
+      const aBlack = isGuestBlacklisted(a)
+      const bBlack = isGuestBlacklisted(b)
+      if (aBlack && !bBlack) return -1
+      if (!aBlack && bBlack) return 1
       if (a.checked_in && !b.checked_in) return 1
       if (!a.checked_in && b.checked_in) return -1
       return 0
@@ -292,76 +434,95 @@ export default function App() {
                 <span className="text-accent-green font-bold">{checkedInCount}</span>
                 <span className="text-gray-600"> / </span>
                 <span className="text-gray-400">{totalGuests}</span>
-                <span className="text-gray-600 ml-1">checked in</span>
+                <span className="text-gray-600 ml-1">in</span>
               </span>
+              {blacklist.length > 0 && (
+                <span className="text-sm font-medium text-red-400 ml-2">
+                  {blacklist.length} banned
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Search */}
-          <div className="relative">
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
-            <input
-              ref={searchRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search guests..."
-              className="w-full pl-12 pr-10 py-3.5 rounded-xl bg-surface-800 border border-surface-600 text-white text-lg placeholder-gray-600 outline-none focus:border-accent-green transition-colors"
-            />
-            {search && (
-              <button
-                onClick={() => { setSearch(''); searchRef.current?.focus() }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-surface-600 text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
+          {/* Tab bar */}
+          <TabBar tab={tab} onChange={setTab} />
 
-          {/* Filter toggle */}
-          <div className="mt-3 flex items-center justify-between">
-            <FilterToggle filter={filter} onChange={setFilter} />
-            <span className="text-xs text-gray-600">
-              {filtered.length} result{filtered.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+          {/* Search & filter (guests tab only) */}
+          {tab === 'guests' && (
+            <>
+              <div className="relative mt-3">
+                <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search guests..."
+                  className="w-full pl-12 pr-10 py-3.5 rounded-xl bg-surface-800 border border-surface-600 text-white text-lg placeholder-gray-600 outline-none focus:border-accent-green transition-colors"
+                />
+                {search && (
+                  <button
+                    onClick={() => { setSearch(''); searchRef.current?.focus() }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-surface-600 text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <FilterToggle filter={filter} onChange={setFilter} />
+                <span className="text-xs text-gray-600">
+                  {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Guest list */}
-      <div className="max-w-2xl mx-auto px-4 mt-4">
-        {loading ? (
-          <div className="text-center py-20">
-            <div className="inline-block w-8 h-8 border-2 border-surface-600 border-t-accent-green rounded-full animate-spin" />
-            <p className="text-gray-600 mt-3 text-sm">Loading guests...</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-20">
-            <svg className="w-12 h-12 mx-auto text-gray-700" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 16.318A4.486 4.486 0 0 0 12.016 15a4.486 4.486 0 0 0-3.198 1.318M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
-            </svg>
-            <p className="text-gray-600 mt-3">No guests found</p>
-            {search && (
-              <p className="text-gray-700 text-sm mt-1">Try a different search term</p>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map((guest) => (
-              <GuestCard
-                key={guest.id}
-                guest={guest}
-                onCheckIn={handleCheckIn}
-                onUndo={handleUndo}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Content */}
+      {tab === 'guests' ? (
+        <div className="max-w-2xl mx-auto px-4 mt-4">
+          {loading ? (
+            <div className="text-center py-20">
+              <div className="inline-block w-8 h-8 border-2 border-surface-600 border-t-accent-green rounded-full animate-spin" />
+              <p className="text-gray-600 mt-3 text-sm">Loading guests...</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-20">
+              <svg className="w-12 h-12 mx-auto text-gray-700" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 16.318A4.486 4.486 0 0 0 12.016 15a4.486 4.486 0 0 0-3.198 1.318M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
+              </svg>
+              <p className="text-gray-600 mt-3">No guests found</p>
+              {search && (
+                <p className="text-gray-700 text-sm mt-1">Try a different search term</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map((guest) => (
+                <GuestCard
+                  key={guest.id}
+                  guest={guest}
+                  onCheckIn={handleCheckIn}
+                  onUndo={handleUndo}
+                  isBlacklisted={isGuestBlacklisted(guest)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <BlacklistPanel
+          blacklist={blacklist}
+          onAdd={handleAddBlacklist}
+          onRemove={handleRemoveBlacklist}
+        />
+      )}
     </div>
   )
 }

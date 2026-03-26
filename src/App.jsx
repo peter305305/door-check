@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
 
 const PIN_CODE = '2026'
-const TABLE = 'guests'
+const TABLE = 'checkins'
 
 function PinGate({ onUnlock }) {
   const [pin, setPin] = useState('')
@@ -99,10 +99,10 @@ function GuestCard({ guest, onCheckIn, onUndo }) {
             </p>
           )}
 
-          {guest.contact && (
+          {guest.contact_details && (
             <p className="text-sm text-gray-500 mt-1">
               <span className="text-gray-600">Contact</span>{' '}
-              <span className={isCheckedIn ? 'text-gray-500' : 'text-gray-300'}>{guest.contact}</span>
+              <span className={isCheckedIn ? 'text-gray-500' : 'text-gray-300'}>{guest.contact_details}</span>
             </p>
           )}
 

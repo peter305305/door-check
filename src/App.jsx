@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
 
 const SECURITY_PIN = '2026'
-const ADMIN_PIN = '0935'
+const ADMIN_PIN = '5959'
 
 function PinGate({ onUnlock }) {
   const [pin, setPin] = useState('')

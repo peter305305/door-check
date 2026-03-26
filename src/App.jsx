@@ -394,7 +394,36 @@ export default function App() {
   }
 
   const searchLower = search.toLowerCase().trim()
-  const filtered = guests
+
+  // Find blacklisted people who aren't on the guest list but match the search
+  const guestNames = new Set(
+    guests.map((g) => `${(g.first_name || '').toLowerCase()} ${(g.last_name || '').toLowerCase()}`.trim())
+  )
+  const blacklistOnlyResults = searchLower
+    ? blacklist
+        .filter((b) => {
+          const fn = (b.first_name || '').toLowerCase()
+          const ln = (b.last_name || '').toLowerCase()
+          const full = `${fn} ${ln}`.trim()
+          // Not already on guest list
+          if (guestNames.has(full)) return false
+          // Matches search
+          return fn.includes(searchLower) || ln.includes(searchLower) || full.includes(searchLower)
+        })
+        .map((b) => ({
+          id: `bl-${b.id}`,
+          first_name: b.first_name,
+          last_name: b.last_name || '',
+          invited_by: null,
+          contact_details: null,
+          notes: b.reason ? `Blacklist reason: ${b.reason}` : null,
+          checked_in: false,
+          checked_in_at: null,
+          _blacklistOnly: true,
+        }))
+    : []
+
+  const filtered = [...guests, ...blacklistOnlyResults]
     .filter((g) => {
       if (searchLower) {
         const match =
@@ -404,14 +433,15 @@ export default function App() {
           (g.invited_by || '').toLowerCase().includes(searchLower)
         if (!match) return false
       }
+      if (g._blacklistOnly) return true
       if (filter === 'pending') return !g.checked_in
       if (filter === 'checked') return g.checked_in
       return true
     })
     .sort((a, b) => {
       // Blacklisted first, then unchecked, then checked
-      const aBlack = isGuestBlacklisted(a)
-      const bBlack = isGuestBlacklisted(b)
+      const aBlack = isGuestBlacklisted(a) || a._blacklistOnly
+      const bBlack = isGuestBlacklisted(b) || b._blacklistOnly
       if (aBlack && !bBlack) return -1
       if (!aBlack && bBlack) return 1
       if (a.checked_in && !b.checked_in) return 1
@@ -510,7 +540,7 @@ export default function App() {
                   guest={guest}
                   onCheckIn={handleCheckIn}
                   onUndo={handleUndo}
-                  isBlacklisted={isGuestBlacklisted(guest)}
+                  isBlacklisted={isGuestBlacklisted(guest) || guest._blacklistOnly}
                 />
               ))}
             </div>
